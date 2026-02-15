@@ -371,20 +371,19 @@ class NodeRuntime(context: Context) {
       isConnected = { _isConnected.value },
     )
 
-    // Wire Porcupine configuration into VoiceWakeManager.
+    // Wire OpenWakeWord configuration into VoiceWakeManager.
     scope.launch {
       combine(
-        prefs.porcupineAccessKey,
-        prefs.porcupineKeywordPath,
-        prefs.porcupineModelPath,
-        prefs.porcupineSensitivity,
-      ) { key, kw, model, sens -> Quad(key, kw, model, sens) }
+        prefs.wakeWordThreshold,
+        prefs.wakeWordModels,
+      ) { threshold, models -> Pair(threshold, models) }
         .distinctUntilChanged()
-        .collect { (key, kw, model, sens) ->
-          voiceWake.accessKey = key
-          voiceWake.keywordPath = kw
-          voiceWake.modelPath = model
-          voiceWake.sensitivity = sens
+        .collect { (threshold, models) ->
+          voiceWake.threshold = threshold
+          voiceWake.activeModels = models
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
         }
     }
 
@@ -445,11 +444,12 @@ class NodeRuntime(context: Context) {
           val host = manualHost.value.trim()
           val port = manualPort.value
           if (host.isNotEmpty() && port in 1..65535) {
-            // Security: autoconnect only to previously trusted gateways (stored TLS pin).
-            if (!manualTls.value) return@collect
-            val stableId = GatewayEndpoint.manual(host = host, port = port).stableId
-            val storedFingerprint = prefs.loadGatewayTlsFingerprint(stableId)?.trim().orEmpty()
-            if (storedFingerprint.isEmpty()) return@collect
+            // When TLS is enabled, autoconnect only to previously trusted gateways (stored TLS pin).
+            if (manualTls.value) {
+              val stableId = GatewayEndpoint.manual(host = host, port = port).stableId
+              val storedFingerprint = prefs.loadGatewayTlsFingerprint(stableId)?.trim().orEmpty()
+              if (storedFingerprint.isEmpty()) return@collect
+            }
 
             didAutoConnect = true
             connect(GatewayEndpoint.manual(host = host, port = port))
@@ -462,8 +462,12 @@ class NodeRuntime(context: Context) {
         val target = list.firstOrNull { it.stableId == targetStableId } ?: return@collect
 
         // Security: autoconnect only to previously trusted gateways (stored TLS pin).
-        val storedFingerprint = prefs.loadGatewayTlsFingerprint(target.stableId)?.trim().orEmpty()
-        if (storedFingerprint.isEmpty()) return@collect
+        // For non-TLS discovered gateways, allow autoconnect without stored fingerprint.
+        val tls = connectionManager.resolveTlsParams(target)
+        if (tls?.required == true) {
+          val storedFingerprint = prefs.loadGatewayTlsFingerprint(target.stableId)?.trim().orEmpty()
+          if (storedFingerprint.isEmpty()) return@collect
+        }
 
         didAutoConnect = true
         connect(target)
@@ -548,20 +552,12 @@ class NodeRuntime(context: Context) {
     prefs.setTalkEnabled(value)
   }
 
-  fun setPorcupineAccessKey(value: String) {
-    prefs.setPorcupineAccessKey(value)
+  fun setWakeWordThreshold(value: Float) {
+    prefs.setWakeWordThreshold(value)
   }
 
-  fun setPorcupineKeywordPath(value: String) {
-    prefs.setPorcupineKeywordPath(value)
-  }
-
-  fun setPorcupineModelPath(value: String) {
-    prefs.setPorcupineModelPath(value)
-  }
-
-  fun setPorcupineSensitivity(value: Float) {
-    prefs.setPorcupineSensitivity(value)
+  fun setWakeWordModels(value: String) {
+    prefs.setWakeWordModels(value)
   }
 
   fun refreshGatewayConnection() {
