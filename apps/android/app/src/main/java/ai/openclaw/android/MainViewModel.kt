@@ -48,6 +48,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
   val talkStatusText: StateFlow<String> = runtime.talkStatusText
   val talkIsListening: StateFlow<Boolean> = runtime.talkIsListening
   val talkIsSpeaking: StateFlow<Boolean> = runtime.talkIsSpeaking
+  val porcupineAccessKey: StateFlow<String> = runtime.prefs.porcupineAccessKey
+  val porcupineKeywordPath: StateFlow<String> = runtime.prefs.porcupineKeywordPath
+  val porcupineModelPath: StateFlow<String> = runtime.prefs.porcupineModelPath
+  val porcupineSensitivity: StateFlow<Float> = runtime.prefs.porcupineSensitivity
   val manualEnabled: StateFlow<Boolean> = runtime.manualEnabled
   val manualHost: StateFlow<String> = runtime.manualHost
   val manualPort: StateFlow<Int> = runtime.manualPort
@@ -128,6 +132,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
   fun setTalkEnabled(enabled: Boolean) {
     runtime.setTalkEnabled(enabled)
+  }
+
+  fun setPorcupineAccessKey(value: String) {
+    runtime.setPorcupineAccessKey(value)
+  }
+
+  fun setPorcupineKeywordPath(value: String) {
+    runtime.setPorcupineKeywordPath(value)
+  }
+
+  fun setPorcupineModelPath(value: String) {
+    runtime.setPorcupineModelPath(value)
+  }
+
+  fun setPorcupineSensitivity(value: Float) {
+    runtime.setPorcupineSensitivity(value)
   }
 
   fun refreshGatewayConnection() {

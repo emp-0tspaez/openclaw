@@ -371,6 +371,23 @@ class NodeRuntime(context: Context) {
       isConnected = { _isConnected.value },
     )
 
+    // Wire Porcupine configuration into VoiceWakeManager.
+    scope.launch {
+      combine(
+        prefs.porcupineAccessKey,
+        prefs.porcupineKeywordPath,
+        prefs.porcupineModelPath,
+        prefs.porcupineSensitivity,
+      ) { key, kw, model, sens -> Quad(key, kw, model, sens) }
+        .distinctUntilChanged()
+        .collect { (key, kw, model, sens) ->
+          voiceWake.accessKey = key
+          voiceWake.keywordPath = kw
+          voiceWake.modelPath = model
+          voiceWake.sensitivity = sens
+        }
+    }
+
     scope.launch {
       combine(
         voiceWakeMode,
@@ -529,6 +546,22 @@ class NodeRuntime(context: Context) {
 
   fun setTalkEnabled(value: Boolean) {
     prefs.setTalkEnabled(value)
+  }
+
+  fun setPorcupineAccessKey(value: String) {
+    prefs.setPorcupineAccessKey(value)
+  }
+
+  fun setPorcupineKeywordPath(value: String) {
+    prefs.setPorcupineKeywordPath(value)
+  }
+
+  fun setPorcupineModelPath(value: String) {
+    prefs.setPorcupineModelPath(value)
+  }
+
+  fun setPorcupineSensitivity(value: Float) {
+    prefs.setPorcupineSensitivity(value)
   }
 
   fun refreshGatewayConnection() {

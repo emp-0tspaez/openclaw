@@ -94,6 +94,22 @@ class SecurePrefs(context: Context) {
   private val _talkEnabled = MutableStateFlow(prefs.getBoolean("talk.enabled", false))
   val talkEnabled: StateFlow<Boolean> = _talkEnabled
 
+  private val _porcupineAccessKey =
+    MutableStateFlow(prefs.getString("porcupine.accessKey", "") ?: "")
+  val porcupineAccessKey: StateFlow<String> = _porcupineAccessKey
+
+  private val _porcupineKeywordPath =
+    MutableStateFlow(prefs.getString("porcupine.keywordPath", "") ?: "")
+  val porcupineKeywordPath: StateFlow<String> = _porcupineKeywordPath
+
+  private val _porcupineModelPath =
+    MutableStateFlow(prefs.getString("porcupine.modelPath", "") ?: "")
+  val porcupineModelPath: StateFlow<String> = _porcupineModelPath
+
+  private val _porcupineSensitivity =
+    MutableStateFlow(prefs.getFloat("porcupine.sensitivity", 0.7f))
+  val porcupineSensitivity: StateFlow<Float> = _porcupineSensitivity
+
   fun setLastDiscoveredStableId(value: String) {
     val trimmed = value.trim()
     prefs.edit { putString("gateway.lastDiscoveredStableID", trimmed) }
@@ -248,6 +264,30 @@ class SecurePrefs(context: Context) {
   fun setTalkEnabled(value: Boolean) {
     prefs.edit { putBoolean("talk.enabled", value) }
     _talkEnabled.value = value
+  }
+
+  fun setPorcupineAccessKey(value: String) {
+    val trimmed = value.trim()
+    prefs.edit { putString("porcupine.accessKey", trimmed) }
+    _porcupineAccessKey.value = trimmed
+  }
+
+  fun setPorcupineKeywordPath(value: String) {
+    val trimmed = value.trim()
+    prefs.edit { putString("porcupine.keywordPath", trimmed) }
+    _porcupineKeywordPath.value = trimmed
+  }
+
+  fun setPorcupineModelPath(value: String) {
+    val trimmed = value.trim()
+    prefs.edit { putString("porcupine.modelPath", trimmed) }
+    _porcupineModelPath.value = trimmed
+  }
+
+  fun setPorcupineSensitivity(value: Float) {
+    val clamped = value.coerceIn(0f, 1f)
+    prefs.edit { putFloat("porcupine.sensitivity", clamped) }
+    _porcupineSensitivity.value = clamped
   }
 
   private fun loadVoiceWakeMode(): VoiceWakeMode {

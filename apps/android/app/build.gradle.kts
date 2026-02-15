@@ -133,6 +133,9 @@ dependencies {
   // Unicast DNS-SD (Wide-Area Bonjour) for tailnet discovery domains.
   implementation("dnsjava:dnsjava:3.6.4")
 
+  // Picovoice Porcupine — on-device wake word detection (AudioRecord based, no audio focus).
+  implementation("ai.picovoice:porcupine-android:3.0.3")
+
   testImplementation("junit:junit:4.13.2")
   testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
   testImplementation("io.kotest:kotest-runner-junit5-jvm:6.0.7")

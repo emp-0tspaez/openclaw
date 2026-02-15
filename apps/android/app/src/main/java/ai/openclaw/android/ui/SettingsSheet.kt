@@ -98,6 +98,15 @@ fun SettingsSheet(viewModel: MainViewModel) {
   val (advancedExpanded, setAdvancedExpanded) = remember { mutableStateOf(false) }
   val focusManager = LocalFocusManager.current
   var wakeWordsHadFocus by remember { mutableStateOf(false) }
+
+  val porcupineAccessKey by viewModel.porcupineAccessKey.collectAsState()
+  val porcupineKeywordPath by viewModel.porcupineKeywordPath.collectAsState()
+  val porcupineModelPath by viewModel.porcupineModelPath.collectAsState()
+  val porcupineSensitivity by viewModel.porcupineSensitivity.collectAsState()
+  var porcupineKeyText by remember { mutableStateOf(porcupineAccessKey) }
+  var porcupineKwText by remember { mutableStateOf(porcupineKeywordPath) }
+  var porcupineModelText by remember { mutableStateOf(porcupineModelPath) }
+  var porcupineSensText by remember { mutableStateOf(porcupineSensitivity.toString()) }
   val deviceModel =
     remember {
       listOfNotNull(Build.MANUFACTURER, Build.MODEL)
@@ -562,6 +571,102 @@ fun SettingsSheet(viewModel: MainViewModel) {
         },
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
+    }
+
+    // ── Porcupine (background wake word engine) ─────────────────
+    item {
+      AnimatedVisibility(visible = voiceWakeMode != VoiceWakeMode.Off) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+          HorizontalDivider()
+          Text("Porcupine (Background Wake Word)", style = MaterialTheme.typography.titleSmall)
+          Text(
+            "Enter your Picovoice AccessKey and keyword (.ppn) to enable always-on wake word detection without interrupting media playback.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+          )
+          OutlinedTextField(
+            value = porcupineKeyText,
+            onValueChange = { porcupineKeyText = it },
+            label = { Text("AccessKey") },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
+              if (!state.isFocused && porcupineKeyText != porcupineAccessKey) {
+                viewModel.setPorcupineAccessKey(porcupineKeyText)
+              }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+              viewModel.setPorcupineAccessKey(porcupineKeyText)
+              focusManager.clearFocus()
+            }),
+          )
+          OutlinedTextField(
+            value = porcupineKwText,
+            onValueChange = { porcupineKwText = it },
+            label = { Text("Keyword Path (.ppn)") },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
+              if (!state.isFocused && porcupineKwText != porcupineKeywordPath) {
+                viewModel.setPorcupineKeywordPath(porcupineKwText)
+              }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+              viewModel.setPorcupineKeywordPath(porcupineKwText)
+              focusManager.clearFocus()
+            }),
+          )
+          OutlinedTextField(
+            value = porcupineModelText,
+            onValueChange = { porcupineModelText = it },
+            label = { Text("Model Path (porcupine_params_es.pv)") },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
+              if (!state.isFocused && porcupineModelText != porcupineModelPath) {
+                viewModel.setPorcupineModelPath(porcupineModelText)
+              }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+              viewModel.setPorcupineModelPath(porcupineModelText)
+              focusManager.clearFocus()
+            }),
+          )
+          OutlinedTextField(
+            value = porcupineSensText,
+            onValueChange = { porcupineSensText = it },
+            label = { Text("Sensitivity (0.0 – 1.0)") },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
+              if (!state.isFocused) {
+                val v = porcupineSensText.toFloatOrNull() ?: 0.7f
+                viewModel.setPorcupineSensitivity(v)
+                porcupineSensText = v.coerceIn(0f, 1f).toString()
+              }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+              val v = porcupineSensText.toFloatOrNull() ?: 0.7f
+              viewModel.setPorcupineSensitivity(v)
+              porcupineSensText = v.coerceIn(0f, 1f).toString()
+              focusManager.clearFocus()
+            }),
+          )
+          Text(
+            if (porcupineAccessKey.isNotBlank() && porcupineKeywordPath.isNotBlank()) {
+              "✓ Porcupine configured — wake word engine active."
+            } else {
+              "Get a free AccessKey at console.picovoice.ai and train your wake word \"Moru\"."
+            },
+            color = if (porcupineAccessKey.isNotBlank() && porcupineKeywordPath.isNotBlank()) {
+              MaterialTheme.colorScheme.primary
+            } else {
+              MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            style = MaterialTheme.typography.bodySmall,
+          )
+        }
+      }
     }
 
     item { HorizontalDivider() }
