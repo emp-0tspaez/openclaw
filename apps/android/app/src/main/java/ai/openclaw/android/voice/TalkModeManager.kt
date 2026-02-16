@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -60,6 +61,8 @@ class TalkModeManager(
 
   private val mainHandler = Handler(Looper.getMainLooper())
   private val json = Json { ignoreUnknownKeys = true }
+  private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+  private var audioFocusRequest: AudioFocusRequest? = null
 
   private val _isEnabled = MutableStateFlow(false)
   val isEnabled: StateFlow<Boolean> = _isEnabled
@@ -200,6 +203,7 @@ class TalkModeManager(
     _isListening.value = false
     _statusText.value = "Off"
     stopSpeaking()
+    abandonAudioFocusDucking()
     _usingFallbackTts.value = false
     chatSubscribedSessionKey = null
 
@@ -462,6 +466,7 @@ class TalkModeManager(
     _statusText.value = "Speaking…"
     _isSpeaking.value = true
     lastSpokenText = cleaned
+    requestAudioFocusDucking()
     ensureInterruptListener()
 
     val apiKey = openaiApiKey?.trim()?.takeIf { it.isNotEmpty() }
@@ -501,6 +506,7 @@ class TalkModeManager(
       }
     }
 
+    abandonAudioFocusDucking()
     _isSpeaking.value = false
   }
 
@@ -537,7 +543,7 @@ class TalkModeManager(
     player.setAudioAttributes(
       AudioAttributes.Builder()
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
         .build(),
     )
     player.setOnPreparedListener {
@@ -601,7 +607,7 @@ class TalkModeManager(
       AudioTrack(
         AudioAttributes.Builder()
           .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-          .setUsage(AudioAttributes.USAGE_MEDIA)
+          .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
           .build(),
         AudioFormat.Builder()
           .setSampleRate(sampleRate)
@@ -644,11 +650,9 @@ class TalkModeManager(
     systemTtsPendingId = utteranceId
 
     withContext(Dispatchers.Main) {
-      // Use STREAM_MUSIC to avoid Samsung USAGE_ASSISTANT suppression
-      val params = Bundle().apply {
-        putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
-      }
-      tts.speak(trimmed, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+      // Use empty params — audio routing handled via setAudioAttributes with
+      // USAGE_ASSISTANCE_NAVIGATION_GUIDANCE so TTS mixes with media playback.
+      tts.speak(trimmed, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
     }
 
     withContext(Dispatchers.IO) {
@@ -714,10 +718,11 @@ class TalkModeManager(
           false
         }
       if (ok) {
-        // Route system TTS through USAGE_MEDIA to bypass Samsung suppression
+        // Route system TTS through USAGE_ASSISTANCE_NAVIGATION_GUIDANCE so it
+        // mixes with media playback (ducks music instead of pausing it).
         tts.setAudioAttributes(
           AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
         )
@@ -759,6 +764,28 @@ class TalkModeManager(
     player = null
     streamingSource?.close()
     streamingSource = null
+  }
+
+  private fun requestAudioFocusDucking() {
+    val attrs = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+      .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+      .build()
+    val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+      .setAudioAttributes(attrs)
+      .setAcceptsDelayedFocusGain(false)
+      .build()
+    audioFocusRequest = request
+    audioManager.requestAudioFocus(request)
+    Log.d(tag, "audio focus requested (GAIN_TRANSIENT_MAY_DUCK)")
+  }
+
+  private fun abandonAudioFocusDucking() {
+    audioFocusRequest?.let {
+      audioManager.abandonAudioFocusRequest(it)
+      audioFocusRequest = null
+      Log.d(tag, "audio focus abandoned")
+    }
   }
 
   private fun cleanupPcmTrack() {
