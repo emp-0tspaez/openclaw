@@ -565,10 +565,19 @@ class NodeRuntime(context: Context) {
     val token = prefs.loadGatewayToken()
     val password = prefs.loadGatewayPassword()
     val tls = connectionManager.resolveTlsParams(endpoint)
+    // connect() sets the desired target and starts runLoop if needed;
+    // it will NOT open a second socket if runLoop is already running.
+    // reconnect() closes the current connection so runLoop picks up
+    // the (potentially updated) desired target on its next iteration.
     operatorSession.connect(endpoint, token, password, connectionManager.buildOperatorConnectOptions(), tls)
     nodeSession.connect(endpoint, token, password, connectionManager.buildNodeConnectOptions(), tls)
-    operatorSession.reconnect()
-    nodeSession.reconnect()
+    // Small delay so connect() can update `desired` before we tear down
+    // the current connection; avoids "closed before connect" race.
+    scope.launch(Dispatchers.IO) {
+      kotlinx.coroutines.delay(100)
+      operatorSession.reconnect()
+      nodeSession.reconnect()
+    }
   }
 
   fun connect(endpoint: GatewayEndpoint) {
