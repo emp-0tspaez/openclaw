@@ -99,16 +99,29 @@ class GatewaySession(
   private var job: Job? = null
   @Volatile private var currentConnection: Connection? = null
 
+  /**
+   * Update the desired target and start the run-loop if it isn't running yet.
+   * If [forceReconnect] is true **and** the loop was already running, the
+   * current connection is closed so the loop picks up the new target.
+   * When the loop is freshly started it will use [desired] on its first
+   * iteration automatically — no reconnect needed.
+   */
   fun connect(
     endpoint: GatewayEndpoint,
     token: String?,
     password: String?,
     options: GatewayConnectOptions,
     tls: GatewayTlsParams? = null,
+    forceReconnect: Boolean = false,
   ) {
     desired = DesiredConnection(endpoint, token, password, options, tls)
     if (job == null) {
+      // First start — runLoop will use `desired` on its first iteration.
       job = scope.launch(Dispatchers.IO) { runLoop() }
+    } else if (forceReconnect) {
+      // Loop already running; close the current connection so it re-reads
+      // `desired` on the next iteration.
+      currentConnection?.closeQuietly()
     }
   }
 
