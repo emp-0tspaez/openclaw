@@ -48,10 +48,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
   val talkStatusText: StateFlow<String> = runtime.talkStatusText
   val talkIsListening: StateFlow<Boolean> = runtime.talkIsListening
   val talkIsSpeaking: StateFlow<Boolean> = runtime.talkIsSpeaking
-  val porcupineAccessKey: StateFlow<String> = runtime.prefs.porcupineAccessKey
-  val porcupineKeywordPath: StateFlow<String> = runtime.prefs.porcupineKeywordPath
-  val porcupineModelPath: StateFlow<String> = runtime.prefs.porcupineModelPath
-  val porcupineSensitivity: StateFlow<Float> = runtime.prefs.porcupineSensitivity
+  val wakeWordThreshold: StateFlow<Float> = runtime.prefs.wakeWordThreshold
+  val wakeWordModels: StateFlow<String> = runtime.prefs.wakeWordModels
   val manualEnabled: StateFlow<Boolean> = runtime.manualEnabled
   val manualHost: StateFlow<String> = runtime.manualHost
   val manualPort: StateFlow<Int> = runtime.manualPort
@@ -134,20 +132,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     runtime.setTalkEnabled(enabled)
   }
 
-  fun setPorcupineAccessKey(value: String) {
-    runtime.setPorcupineAccessKey(value)
+  fun setWakeWordThreshold(value: Float) {
+    runtime.setWakeWordThreshold(value)
   }
 
-  fun setPorcupineKeywordPath(value: String) {
-    runtime.setPorcupineKeywordPath(value)
-  }
-
-  fun setPorcupineModelPath(value: String) {
-    runtime.setPorcupineModelPath(value)
-  }
-
-  fun setPorcupineSensitivity(value: Float) {
-    runtime.setPorcupineSensitivity(value)
+  fun setWakeWordModels(value: String) {
+    runtime.setWakeWordModels(value)
   }
 
   fun refreshGatewayConnection() {

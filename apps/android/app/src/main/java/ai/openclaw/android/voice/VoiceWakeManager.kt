@@ -9,10 +9,8 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
-import ai.picovoice.porcupine.Porcupine
-import ai.picovoice.porcupine.PorcupineManager
-import ai.picovoice.porcupine.PorcupineManagerCallback
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,14 +18,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Voice wake manager powered by Picovoice Porcupine.
+ * Voice wake manager powered by OpenWakeWord (ONNX).
  *
- * Phase 1 — Porcupine listens continuously via AudioRecord (no audio focus, no media interruption).
+ * Phase 1 — OpenWakeWordDetector listens continuously via AudioRecord (no audio focus).
  * Phase 2 — When the wake word is detected, SpeechRecognizer runs briefly to capture the command.
  * Phase 3 — After command capture (or timeout), returns to Phase 1.
  *
- * If no Porcupine AccessKey or keyword is configured, falls back to the legacy
- * SpeechRecognizer‑only behaviour for backward compatibility.
+ * Falls back to SpeechRecognizer-only if no ONNX models are available.
  */
 class VoiceWakeManager(
   private val context: Context,
@@ -51,18 +48,17 @@ class VoiceWakeManager(
   var triggerWords: List<String> = emptyList()
     private set
 
-  // ── Porcupine ─────────────────────────────────────────────────────
-  private var porcupineManager: PorcupineManager? = null
+  // ── OpenWakeWord detector ─────────────────────────────────────────
+  private var wakeWordDetector: OpenWakeWordDetector? = null
+  private var detectorInitialized = false
 
   // ── Legacy / command‑capture SpeechRecognizer ─────────────────────
   private var recognizer: SpeechRecognizer? = null
   private var commandTimeoutJob: Job? = null
 
   // ── Configuration ─────────────────────────────────────────────────
-  var accessKey: String? = null
-  var keywordPath: String? = null            // path to .ppn inside assets
-  var modelPath: String? = null              // path to porcupine_params_es.pv inside assets
-  var sensitivity: Float = 0.7f
+  var threshold: Float = 0.5f
+  var activeModels: List<String> = listOf("hey_jarvis_v0.1.onnx")
 
   private var stopRequested = false
   private var capturingCommand = false
@@ -79,14 +75,14 @@ class VoiceWakeManager(
       stopRequested = false
       capturingCommand = false
 
-      val key = accessKey?.trim()
-      val kwPath = keywordPath?.trim()
-
-      if (!key.isNullOrEmpty() && !kwPath.isNullOrEmpty()) {
-        startPorcupine(key, kwPath)
-      } else {
-        Log.w(TAG, "No Porcupine AccessKey / keyword configured — falling back to SpeechRecognizer")
-        startLegacy()
+      scope.launch(Dispatchers.IO) {
+        val detector = getOrInitDetector()
+        if (detector != null) {
+          mainHandler.post { startWakeWordDetector(detector) }
+        } else {
+          Log.w(TAG, "OpenWakeWord init failed — falling back to SpeechRecognizer")
+          mainHandler.post { startLegacy() }
+        }
       }
     }
   }
@@ -99,55 +95,68 @@ class VoiceWakeManager(
       _isListening.value = false
       _statusText.value = statusText
       capturingCommand = false
-      stopPorcupineInternal()
+      stopDetectorInternal()
       stopRecognizerInternal()
     }
   }
 
-  // ── Porcupine engine ──────────────────────────────────────────────
+  // ── OpenWakeWord engine ───────────────────────────────────────────
 
-  private fun startPorcupine(key: String, kwPath: String) {
+  private fun getOrInitDetector(): OpenWakeWordDetector? {
+    if (detectorInitialized && wakeWordDetector != null) return wakeWordDetector
+
     try {
-      stopPorcupineInternal()
-
-      val builder = PorcupineManager.Builder()
-        .setAccessKey(key)
-        .setKeywordPath(kwPath)
-        .setSensitivity(sensitivity)
-
-      val mdlPath = modelPath?.trim()
-      if (!mdlPath.isNullOrEmpty()) {
-        builder.setModelPath(mdlPath)
+      val detector = OpenWakeWordDetector(context) {
+        Log.d(TAG, "Wake word detected!")
+        mainHandler.post {
+          if (stopRequested) return@post
+          _statusText.value = "Triggered"
+          startCommandCapture()
+        }
       }
+      detector.threshold = threshold
+      detector.activeModels = activeModels
 
-      porcupineManager = builder.build(context, porcupineCallback)
-      porcupineManager?.start()
+      val ok = detector.initialize()
+      if (!ok) {
+        detector.release()
+        return null
+      }
+      wakeWordDetector = detector
+      detectorInitialized = true
+      return detector
+    } catch (err: Throwable) {
+      Log.e(TAG, "OpenWakeWord init failed", err)
+      return null
+    }
+  }
 
-      _isListening.value = true
-      _statusText.value = "Listening"
-      Log.d(TAG, "Porcupine started (keyword=$kwPath)")
+  private fun startWakeWordDetector(detector: OpenWakeWordDetector) {
+    try {
+      stopDetectorInternal()
+
+      val ok = detector.start()
+      if (ok) {
+        wakeWordDetector = detector
+        _isListening.value = true
+        _statusText.value = "Listening"
+        Log.d(TAG, "OpenWakeWord started")
+      } else {
+        _isListening.value = false
+        _statusText.value = "Wake word start failed"
+        Log.e(TAG, "OpenWakeWord start returned false")
+      }
     } catch (err: Throwable) {
       _isListening.value = false
-      _statusText.value = "Porcupine error: ${err.message ?: err::class.simpleName}"
-      Log.e(TAG, "Porcupine start failed", err)
+      _statusText.value = "Wake word error: ${err.message ?: err::class.simpleName}"
+      Log.e(TAG, "OpenWakeWord start failed", err)
     }
   }
 
-  private fun stopPorcupineInternal() {
+  private fun stopDetectorInternal() {
     try {
-      porcupineManager?.stop()
-      porcupineManager?.delete()
+      wakeWordDetector?.stop()
     } catch (_: Throwable) { }
-    porcupineManager = null
-  }
-
-  private val porcupineCallback = PorcupineManagerCallback { keywordIndex ->
-    Log.d(TAG, "Wake word detected (index=$keywordIndex)")
-    mainHandler.post {
-      if (stopRequested) return@post
-      _statusText.value = "Triggered"
-      startCommandCapture()
-    }
   }
 
   // ── Command capture (brief SpeechRecognizer after wake word) ──────
@@ -162,8 +171,8 @@ class VoiceWakeManager(
     }
 
     try {
-      // Pause Porcupine while SpeechRecognizer is active (they share the mic).
-      try { porcupineManager?.stop() } catch (_: Throwable) { }
+      // Pause detector while SpeechRecognizer is active (they share the mic).
+      stopDetectorInternal()
 
       stopRecognizerInternal()
       recognizer = SpeechRecognizer.createSpeechRecognizer(context).also {
@@ -181,13 +190,13 @@ class VoiceWakeManager(
       _statusText.value = "Listening for command…"
       Log.d(TAG, "Command capture started")
 
-      // Safety timeout — if no speech arrives, resume Porcupine.
+      // Safety timeout — if no speech arrives, resume detector.
       commandTimeoutJob?.cancel()
       commandTimeoutJob = scope.launch {
         delay(COMMAND_TIMEOUT_MS)
         mainHandler.post {
           if (capturingCommand && !stopRequested) {
-            Log.d(TAG, "Command capture timeout — resuming Porcupine")
+            Log.d(TAG, "Command capture timeout — resuming wake word detector")
             finishCommandCapture()
           }
         }
@@ -203,19 +212,20 @@ class VoiceWakeManager(
     commandTimeoutJob?.cancel()
     commandTimeoutJob = null
     stopRecognizerInternal()
-    resumePorcupine()
+    resumeDetector()
   }
 
-  private fun resumePorcupine() {
+  private fun resumeDetector() {
     if (stopRequested) return
+    val detector = wakeWordDetector ?: return
     try {
-      porcupineManager?.start()
+      detector.start()
       _isListening.value = true
       _statusText.value = "Listening"
-      Log.d(TAG, "Porcupine resumed")
+      Log.d(TAG, "Wake word detector resumed")
     } catch (err: Throwable) {
-      _statusText.value = "Porcupine resume error: ${err.message}"
-      Log.e(TAG, "Porcupine resume failed", err)
+      _statusText.value = "Wake word resume error: ${err.message}"
+      Log.e(TAG, "Wake word detector resume failed", err)
     }
   }
 
@@ -249,7 +259,7 @@ class VoiceWakeManager(
     override fun onError(error: Int) {
       if (stopRequested) return
       Log.w(TAG, "Command capture SpeechRecognizer error=$error")
-      // Any error during command capture — just resume Porcupine.
+      // Any error during command capture — just resume wake word detector.
       mainHandler.post { finishCommandCapture() }
     }
 

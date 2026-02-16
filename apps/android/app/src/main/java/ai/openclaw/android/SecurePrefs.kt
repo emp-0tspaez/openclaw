@@ -94,21 +94,13 @@ class SecurePrefs(context: Context) {
   private val _talkEnabled = MutableStateFlow(prefs.getBoolean("talk.enabled", false))
   val talkEnabled: StateFlow<Boolean> = _talkEnabled
 
-  private val _porcupineAccessKey =
-    MutableStateFlow(prefs.getString("porcupine.accessKey", "") ?: "")
-  val porcupineAccessKey: StateFlow<String> = _porcupineAccessKey
+  private val _wakeWordThreshold =
+    MutableStateFlow(prefs.getFloat("wakeWord.threshold", 0.5f))
+  val wakeWordThreshold: StateFlow<Float> = _wakeWordThreshold
 
-  private val _porcupineKeywordPath =
-    MutableStateFlow(prefs.getString("porcupine.keywordPath", "") ?: "")
-  val porcupineKeywordPath: StateFlow<String> = _porcupineKeywordPath
-
-  private val _porcupineModelPath =
-    MutableStateFlow(prefs.getString("porcupine.modelPath", "") ?: "")
-  val porcupineModelPath: StateFlow<String> = _porcupineModelPath
-
-  private val _porcupineSensitivity =
-    MutableStateFlow(prefs.getFloat("porcupine.sensitivity", 0.7f))
-  val porcupineSensitivity: StateFlow<Float> = _porcupineSensitivity
+  private val _wakeWordModels =
+    MutableStateFlow(prefs.getString("wakeWord.models", "") ?: "")
+  val wakeWordModels: StateFlow<String> = _wakeWordModels
 
   fun setLastDiscoveredStableId(value: String) {
     val trimmed = value.trim()
@@ -266,28 +258,16 @@ class SecurePrefs(context: Context) {
     _talkEnabled.value = value
   }
 
-  fun setPorcupineAccessKey(value: String) {
-    val trimmed = value.trim()
-    prefs.edit { putString("porcupine.accessKey", trimmed) }
-    _porcupineAccessKey.value = trimmed
-  }
-
-  fun setPorcupineKeywordPath(value: String) {
-    val trimmed = value.trim()
-    prefs.edit { putString("porcupine.keywordPath", trimmed) }
-    _porcupineKeywordPath.value = trimmed
-  }
-
-  fun setPorcupineModelPath(value: String) {
-    val trimmed = value.trim()
-    prefs.edit { putString("porcupine.modelPath", trimmed) }
-    _porcupineModelPath.value = trimmed
-  }
-
-  fun setPorcupineSensitivity(value: Float) {
+  fun setWakeWordThreshold(value: Float) {
     val clamped = value.coerceIn(0f, 1f)
-    prefs.edit { putFloat("porcupine.sensitivity", clamped) }
-    _porcupineSensitivity.value = clamped
+    prefs.edit { putFloat("wakeWord.threshold", clamped) }
+    _wakeWordThreshold.value = clamped
+  }
+
+  fun setWakeWordModels(value: String) {
+    val trimmed = value.trim()
+    prefs.edit { putString("wakeWord.models", trimmed) }
+    _wakeWordModels.value = trimmed
   }
 
   private fun loadVoiceWakeMode(): VoiceWakeMode {
